@@ -17,4 +17,28 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #############################################################################
 
-from . import wizard, data
+from openerp import models, fields, api
+
+class Type(models.Model):
+    
+    _inherit = "res.partner.bank.type"
+    
+    @api.model
+    def create_bank_type(self):
+        # Create new bank types 'Bankgiro' & 'Plusgiro' if they don't already exist.
+        bg = self.search_count([('code', '=', 'bg')])
+        pg = self.search_count([('code', '=', 'pg')])
+        
+        if not bg:
+            self.create({
+                        'id': 'bg',
+                        'code': 'bg',
+                        'name': 'Bankgiro'
+                        })
+                
+        if not pg:
+            self.create({
+                        'id': 'pg',
+                        'code': 'pg',
+                        'name': 'Plusgiro'
+                        })

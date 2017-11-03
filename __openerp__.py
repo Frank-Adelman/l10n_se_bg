@@ -33,9 +33,13 @@ Prerequisite
 ~~~~~~~~~~~~
   * Activate Bankgiro payment files at your bank.
 
+Installation
+~~~~~~~~~~~~
+  * This module creates two new bank types: 'Bankgiro' and 'Plusgiro'.
+
 Configuration
 ~~~~~~~~~~~~~
-  * Create a payment mode and create your company Bankgiro account in: Accounting -> Configuration -> Miscellaneous -> Payment Mode
+  * Create a payment mode and set your company's Bankgiro account in: Accounting -> Configuration -> Miscellaneous -> Payment Mode
   * Create Bankgiro or Plusgiro accounts for your suppliers.
   
 Usage
@@ -50,8 +54,9 @@ Usage
  'author': 'Frank Adelman',
  'category': 'Localization',
  'license': 'AGPL-3',
- 'depends': ['base', 'account_payment', 'document', 'l10n_se'],
- 'data': ['wizard/payment_order_views.xml'],
+ 'depends': ['base', 'account_payment', 'document'],
+ 'data': ['wizard/payment_order_views.xml',
+          'data/res_partner_bank_type_data.xml'],
  'auto_install': False,
  'installable': True,
  'images': []
