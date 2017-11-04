@@ -19,7 +19,7 @@
 
 from openerp import models, fields, api
 
-class Type(models.Model):
+class res_partner_bank_type(models.Model):
     
     _inherit = "res.partner.bank.type"
     
