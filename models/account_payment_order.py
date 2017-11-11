@@ -19,7 +19,6 @@
 
 import time
 from datetime import datetime
-import base64
 
 from openerp import models, fields, api, _
 from openerp.exceptions import Warning
@@ -28,20 +27,17 @@ from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
 #import logging
 #_logger = logging.getLogger(__name__)
 
-class BGFileGenerator(models.TransientModel):
-    """Class for generating a Swedish Bankgiro payment file."""
+class AccountPaymentOrder(models.Model):
     
-    _name = "payment.order.bgfilegenerator"
+    _inherit = 'account.payment.order'
     
     @api.multi
-    def action_generate_file(self):
+    def generate_payment_file(self):
         """Start generating the Bankgiro payment file."""
+        self.ensure_one()
         
-        active_id = self._context.get('active_id', [])
-        self._payment_order = self.env['payment.order'].browse(active_id)
-
-        if not self._payment_order.line_ids:
-            raise Warning(_('There are no payment lines.'))
+        if self.payment_method_id.code != 'bg_link':
+            return super(AccountPaymentOrder, self).generate_payment_file()
         
         self._file_content = ""
         
@@ -51,20 +47,12 @@ class BGFileGenerator(models.TransientModel):
 
         # Encode file content.
         self._file_content = self._file_content.encode('latin1')
-        data = base64.b64encode(self._file_content)
+        file_name = 'BG%s.txt' % time.strftime(DEFAULT_SERVER_DATETIME_FORMAT, time.gmtime())
+        file_name = file_name.replace(' ', '_')
 
         #_logger.error("DEBUG OUTPUT:\n%s", self._file_content)
-
-        # Save data as attachment.
-        file_name = 'BG%s.txt' % time.strftime(DEFAULT_SERVER_DATETIME_FORMAT, time.gmtime())
-        dict = {
-            'name': file_name.replace(' ', '_'),
-            'datas': data,
-            #'datas_fname': file_name,
-            'res_model': 'payment.order',
-            'res_id': active_id
-        }
-        self.env['ir.attachment'].create(dict)
+        
+        return (self._file_content, file_name)
     
     def _create_opening_post(self):
         """Create the opening post for the file in the format of:
@@ -92,18 +80,18 @@ class BGFileGenerator(models.TransientModel):
         
         payment_lines = []
         
-        for pline in self._payment_order.line_ids:
-            payment_line = []
+        for line in self.bank_line_ids:
+            bank_line = []
             
-            payment_line.append(self._payment_type(pline))
-            payment_line.append(self._partner_bank(pline).rjust(10, '0'))
-            payment_line.append(self._payment_ref(pline).ljust(25, ' '))
-            payment_line.append(self._payment_amount(pline).rjust(12, '0'))
-            payment_line.append(self._payment_date(pline))
-            payment_line.append(" " * 5)
-            payment_line.append(self._internal_ref(pline) + "\r\n")
+            bank_line.append(self._payment_type(line))
+            bank_line.append(self._partner_bank(line).rjust(10, '0'))
+            bank_line.append(self._payment_ref(line).ljust(25, ' '))
+            bank_line.append(self._payment_amount(line).rjust(12, '0'))
+            bank_line.append(self._payment_date(line))
+            bank_line.append(" " * 5)
+            bank_line.append(self._internal_ref(line) + "\r\n")
             
-            payment_lines.append(payment_line)
+            payment_lines.append(bank_line)
 
         # Sort payment lines by bank account and by payment type.
         # Credit lines should be below any debet lines for each partner.
@@ -128,39 +116,25 @@ class BGFileGenerator(models.TransientModel):
         self._file_content += self._total_amount_negative()
 
     def _company_bank(self):
-        # Have payment mode been set on payment order header?
-        if not self._payment_order.mode:
-            raise Warning(_('No payment mode set on payment order.'))
-        
         # Does the company have a bank account configured?
-        bank = self._payment_order.mode.bank_id
+        bank = self.company_partner_bank_id or ''
         if not bank:
             raise Warning(_('No bank account set in payment mode.'))
         
         # Bank account must be of type bg.
-        if not bank.state == 'bg':
+        if not bank.acc_type == 'bg':
             raise Warning(_('Company bank account is not of type Bankgiro but: "%s".')
-                          % bank.state
+                          % bank.acc_type
                           )
         
         # Get company BG-number in condensed form.
         company_bg = bank.acc_number or ''
         company_bg = company_bg.replace('-', '') or ''
 
-        # Is account number left blank?
-        if not company_bg:
-            raise Warning(_('No BG-number set for the company.'))
-        
-        # Don't allow for too long account number.
-        if len(company_bg) > 10:
-             raise Warning(_('Company BG-number has too many digits: %s, '
-                             'only 10 is allowed.') % len(company_bg)
-                          )
-        
         return company_bg
     
     def _payment_type(self, payment_line):
-        bank_type = payment_line.bank_id.state
+        bank_type = payment_line.partner_bank_id.acc_type
         payment_amount = payment_line.amount_currency
         
         if bank_type == 'bg' and payment_amount >= 0:
@@ -180,7 +154,7 @@ class BGFileGenerator(models.TransientModel):
     
     def _partner_bank(self, payment_line):
         # Get partners account number in condensed form.
-        partner_acc = payment_line.bank_id.acc_number or ''
+        partner_acc = payment_line.partner_bank_id.acc_number or ''
         partner_acc = partner_acc.replace('-', '') or ''
         
         # Is account number left blank?
@@ -189,17 +163,10 @@ class BGFileGenerator(models.TransientModel):
                           % payment_line.partner_id.name
                          )
         
-        # Don't allow for too long account number.
-        if len(partner_acc) > 10:
-            raise Warning(_('Account number for partner "%s" has too many digits: %s, '
-                            'only 10 is allowed.') % (payment_line.partner_id.name, len(partner_acc))
-                         )
-        
         return partner_acc
 
     def _payment_ref(self, payment_line):
-        # Set payment reference in order of existence: 'Payment Reference', 'Supplier Invoice Number', 'Voucher Number'
-        # Only return that last 25 characters.
+        # Set payment reference, and only return the last 25 characters.
         return payment_line.communication[-25:]
 
     def _payment_amount(self, payment_line):
@@ -215,21 +182,16 @@ class BGFileGenerator(models.TransientModel):
                          )
         
         # Check for payment in SEK.
-        if not payment_line.currency.name == 'SEK':
+        if not payment_line.currency_id.name == 'SEK':
             raise Warning(_('Can only make payments in SEK, payment to "%s" is in: %s')
-                          % (payment_line.partner_id.name, payment_line.currency.name)
+                          % (payment_line.partner_id.name, payment_line.currency_id.name)
                          )
         
         return amount
 
     def _payment_date(self, payment_line):
-        # Get payment date from payment order header if any.
-        if payment_line.order_id.date_scheduled:
-            payment_date = fields.Date.from_string(payment_line.order_id.date_scheduled)
-        # Get payment date from payment order line field: Payment Date.
-        elif payment_line.date:
+        if payment_line.date:
             payment_date = fields.Date.from_string(payment_line.date)
-        # If no dates set, use todays date.
         else:
             payment_date = datetime.now().today()
 
@@ -237,13 +199,13 @@ class BGFileGenerator(models.TransientModel):
 
     def _internal_ref(self, payment_line):
         # Invoice journal number.
-        return payment_line.move_line_id.invoice.number or ''
-
+        return payment_line.payment_line_ids.move_line_id.move_id.name or ''
+    
     def _payment_lines_count(self):
-        return str(len(self._payment_order.line_ids))
+        return str(len(self.bank_line_ids))
     
     def _total_amount(self):
-        amount = sum(pline.amount_currency for pline in self._payment_order.line_ids)
+        amount = sum(line.amount_currency for line in self.bank_line_ids)
         
         # Always use 2 decimal places.
         amount = '{0:.2f}'.format(amount)
@@ -252,10 +214,94 @@ class BGFileGenerator(models.TransientModel):
         return amount.replace('.', '').replace(',', '').replace('-', '')
 
     def _total_amount_negative(self):
-        amount = sum(pline.amount_currency for pline in self._payment_order.line_ids)
+        amount = sum(line.amount_currency for line in self.bank_line_ids)
         
         # Add trailing '-' if total amount is negative.
         if amount < 0:
             return "-"
         else:
             return ""
+
+
+    # Overriding parent method to be able to process credit invoices!
+    @api.multi
+    def draft2open(self):
+        """
+        Called when you click on the 'Confirm' button
+        Set the 'date' on payment line depending on the 'date_prefered'
+        setting of the payment.order
+        Re-generate the bank payment lines
+        """
+        bplo = self.env['bank.payment.line']
+        today = fields.Date.context_today(self)
+        for order in self:
+            if not order.journal_id:
+                raise UserError(_(
+                                  'Missing Bank Journal on payment order %s.') % order.name)
+            if not order.payment_line_ids:
+                raise UserError(_(
+                                  'There are no transactions on payment order %s.')
+                                % order.name)
+            # Delete existing bank payment lines
+            order.bank_line_ids.unlink()
+            # Create the bank payment lines from the payment lines
+            group_paylines = {}  # key = hashcode
+            for payline in order.payment_line_ids:
+                payline.draft2open_payment_line_check()
+                # Compute requested payment date
+                if order.date_prefered == 'due':
+                    requested_date = payline.ml_maturity_date or today
+                elif order.date_prefered == 'fixed':
+                    requested_date = order.date_scheduled or today
+                else:
+                    requested_date = today
+                # No payment date in the past
+                if requested_date < today:
+                    requested_date = today
+                # inbound: check option no_debit_before_maturity
+                if (
+                    order.payment_type == 'inbound' and
+                    order.payment_mode_id.no_debit_before_maturity and
+                    payline.ml_maturity_date and
+                    requested_date < payline.ml_maturity_date):
+                    raise UserError(_(
+                        "The payment mode '%s' has the option "
+                        "'Disallow Debit Before Maturity Date'. The "
+                        "payment line %s has a maturity date %s "
+                        "which is after the computed payment date %s.") % (
+                            order.payment_mode_id.name,
+                            payline.name,
+                            payline.ml_maturity_date,
+                            requested_date))
+                # Write requested_date on 'date' field of payment line
+                payline.date = requested_date
+                # Group options
+                if order.payment_mode_id.group_lines:
+                    hashcode = payline.payment_line_hashcode()
+                else:
+                    # Use line ID as hascode, which actually means no grouping
+                    hashcode = payline.id
+                if hashcode in group_paylines:
+                    group_paylines[hashcode]['paylines'] += payline
+                    group_paylines[hashcode]['total'] +=\
+                        payline.amount_currency
+                else:
+                    group_paylines[hashcode] = {
+                        'paylines': payline,
+                        'total': payline.amount_currency,
+                    }
+            # Create bank payment lines
+            for paydict in group_paylines.values():
+                # EDITED: Only do this check for non 'bg_link' type payments.
+                if self.payment_method_id.code != 'bg_link':
+                    # Block if a bank payment line is <= 0
+                    if paydict['total'] <= 0:
+                        raise UserError(_(
+                            "The amount for Partner '%s' is negative "
+                            "or null (%.2f) !")
+                            % (paydict['paylines'][0].partner_id.name,
+                                paydict['total']))
+                vals = self._prepare_bank_payment_line(paydict['paylines'])
+                bplo.create(vals)
+        self.write({'state': 'open'})
+        return True

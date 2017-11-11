@@ -17,4 +17,5 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #############################################################################
 
-from . import payment_order
+from . import res_partner_bank
+from . import account_payment_order

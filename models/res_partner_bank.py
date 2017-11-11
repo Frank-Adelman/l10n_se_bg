@@ -19,26 +19,41 @@
 
 from openerp import models, fields, api
 
-class res_partner_bank_type(models.Model):
+def luhn_check(number):
+    # https://sv.wikipedia.org/wiki/Luhn-algoritmen
+    # TO BE IMPLEMENTED!
+    return
+
+def bg_validator(acc_number):
+    # 7-8 digits: (X)XXX-XXXX
+    if 7 < len(acc_number) < 10:
+        if acc_number[-5] == '-':
+            return True
+    else:
+        return False
+
+def pg_validator(acc_number):
+    # 2-8 digits: (XXXXXX)X-X
+    if 2 < len(acc_number) < 10:
+        if acc_number[-2] == '-':
+            return True
+    else:
+        return False
+
+class ResPartnerBank(models.Model):
     
-    _inherit = "res.partner.bank.type"
-    
-    @api.model
-    def create_bank_type(self):
-        # Create new bank types 'Bankgiro' & 'Plusgiro' if they don't already exist.
-        bg = self.search_count([('code', '=', 'bg')])
-        pg = self.search_count([('code', '=', 'pg')])
-        
-        if not bg:
-            self.create({
-                        'id': 'bg',
-                        'code': 'bg',
-                        'name': 'Bankgiro'
-                        })
-                
-        if not pg:
-            self.create({
-                        'id': 'pg',
-                        'code': 'pg',
-                        'name': 'Plusgiro'
-                        })
+    _inherit = "res.partner.bank"
+
+    @api.one
+    @api.depends('acc_number')
+    def _compute_acc_type(self):
+        # At first acc_number is false, let parent model handle that.
+        if not self.acc_number:
+            super(ResPartnerBank, self)._compute_acc_type()
+        elif bg_validator(self.acc_number):
+            self.acc_type = 'bg'
+        elif pg_validator(self.acc_number):
+            self.acc_type = 'pg'
+        else:
+            super(ResPartnerBank, self)._compute_acc_type()
+
