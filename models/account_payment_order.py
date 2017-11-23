@@ -22,6 +22,7 @@ from datetime import datetime
 
 from openerp import models, fields, api, _
 from openerp.exceptions import Warning
+from openerp.exceptions import UserError
 from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
 
 #import logging
@@ -198,8 +199,11 @@ class AccountPaymentOrder(models.Model):
         return payment_date.strftime("%y%m%d")
 
     def _internal_ref(self, payment_line):
-        # Invoice journal number.
-        return payment_line.payment_line_ids.move_line_id.move_id.name or ''
+        # Invoice journal number. Could be multiple if 'Group Transactions in Payment Orders' is checked.
+        ref = ''
+        for id in payment_line.payment_line_ids:
+            ref += id.move_line_id.move_id.name or ''
+        return ref[-20:]
     
     def _payment_lines_count(self):
         return str(len(self.bank_line_ids))
@@ -221,7 +225,6 @@ class AccountPaymentOrder(models.Model):
             return "-"
         else:
             return ""
-
 
     # Overriding parent method to be able to process credit invoices!
     @api.multi
@@ -301,7 +304,34 @@ class AccountPaymentOrder(models.Model):
                             "or null (%.2f) !")
                             % (paydict['paylines'][0].partner_id.name,
                                 paydict['total']))
+                # END EDIT
                 vals = self._prepare_bank_payment_line(paydict['paylines'])
                 bplo.create(vals)
         self.write({'state': 'open'})
         return True
+
+    # Overriding parent method to be able to process credit invoices!
+    @api.multi
+    def _prepare_move_line_offsetting_account(
+            self, amount_company_currency, amount_payment_currency, bank_lines):
+        
+        vals = super(AccountPaymentOrder, self)._prepare_move_line_offsetting_account(amount_company_currency,
+                                                                                      amount_payment_currency,
+                                                                                      bank_lines)
+
+        if self.payment_type == 'outbound' and amount_company_currency < 0:
+            vals['credit'] = 0.0
+            vals['debit'] = abs(amount_company_currency)
+
+        return vals
+
+    # Overriding parent method to be able to process credit invoices!
+    @api.multi
+    def _prepare_move_line_partner_account(self, bank_line):
+        vals = super(AccountPaymentOrder, self)._prepare_move_line_partner_account(bank_line)
+
+        if self.payment_type == 'outbound' and bank_line.amount_company_currency < 0:
+            vals['credit'] = abs(bank_line.amount_company_currency)
+            vals['debit'] = 0.0
+
+        return vals

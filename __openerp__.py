@@ -18,7 +18,7 @@
 #############################################################################
 
 {'name': 'Sweden - Bankgiro Payment File',
- 'summary': 'Electronic payment file for Swedish Bankgiro Leverantörsbetalningar',
+ 'summary': 'Electronic payment file for Swedish Bankgirot Leverantörsbetalningar',
  'description': """
 Generate payment files to the Swedish Bankgiro.
 -----------------------------------------------
@@ -41,13 +41,14 @@ Installation
 
 Configuration
 ~~~~~~~~~~~~~
-  * Create a payment mode and select '[bg_link] Bankgirot Leverantörsbetalningar' as payment method, and set your company's Bankgiro account in: Invoicing -> Configuration -> Management -> Payment Modes
+  * Create a payment mode and select '[bg_link] Bankgirot Leverantörsbetalningar' as payment method, and set your company's Bankgiro account in: Invoicing > Configuration > Management > Payment Modes
+  * Make sure 'Group Transactions in Payment Orders' is not checked in your payment mode.
   * Create Bankgiro or Plusgiro accounts for your suppliers.
   
 Usage
 ~~~~~
   * When registering new invoices to later be included in a payment file, select your newly created payment mode.
-  * Create a payment order from: Invoicing -> Payments -> Payment Orders
+  * Create a payment order from: Invoicing > Payments > Payment Orders
   * For 'Payment Mode' select your newly created payment mode then populate the payment order with the 'Create Payment Lines from Journal Items' button.
   * To generate the file, click 'Confirm Payments' button then 'Generate Payment File'.
   * Download the file and send it to your bank.

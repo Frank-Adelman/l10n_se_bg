@@ -29,16 +29,14 @@ def bg_validator(acc_number):
     if 7 < len(acc_number) < 10:
         if acc_number[-5] == '-':
             return True
-    else:
-        return False
+    return False
 
 def pg_validator(acc_number):
     # 2-8 digits: (XXXXXX)X-X
     if 2 < len(acc_number) < 10:
         if acc_number[-2] == '-':
             return True
-    else:
-        return False
+    return False
 
 class ResPartnerBank(models.Model):
     
@@ -47,7 +45,7 @@ class ResPartnerBank(models.Model):
     @api.one
     @api.depends('acc_number')
     def _compute_acc_type(self):
-        # At first acc_number is false, let parent model handle that.
+        # At first acc_number is false, let parent method handle that.
         if not self.acc_number:
             super(ResPartnerBank, self)._compute_acc_type()
         elif bg_validator(self.acc_number):
