@@ -19,23 +19,42 @@
 
 from openerp import models, fields, api
 
+#import logging
+#_logger = logging.getLogger(__name__)
+
 def luhn_check(number):
     # https://sv.wikipedia.org/wiki/Luhn-algoritmen
-    # TO BE IMPLEMENTED!
-    return
+    
+    # Reverse number and remove '-' character.
+    digits = [int(x) for x in number[::-1].replace('-', '')]
+    
+    # Sum every other digit starting with the first.
+    odd_digitsum = sum(x for x in digits[::2])
+    
+    # Multiply every other digit starting with the second.
+    even_digits = map(lambda x: x*2, digits[1::2])
+    
+    # Split and sum each individual digit.
+    even_digitsum = sum(int(x) for x in ''.join(map(str, even_digits)))
+
+    return (odd_digitsum + even_digitsum) % 10 == 0
 
 def bg_validator(acc_number):
     # 7-8 digits: (X)XXX-XXXX
-    if 7 < len(acc_number) < 10:
-        if acc_number[-5] == '-':
-            return True
+    if acc_number.replace('-', '', 1).isdigit():
+        if 7 < len(acc_number) < 10:
+            if acc_number[-5] == '-':
+                if luhn_check(acc_number):
+                    return True
     return False
 
 def pg_validator(acc_number):
     # 2-8 digits: (XXXXXX)X-X
-    if 2 < len(acc_number) < 10:
-        if acc_number[-2] == '-':
-            return True
+    if acc_number.replace('-', '', 1).isdigit():
+        if 2 < len(acc_number) < 10:
+            if acc_number[-2] == '-':
+                if luhn_check(acc_number):
+                    return True
     return False
 
 class ResPartnerBank(models.Model):
